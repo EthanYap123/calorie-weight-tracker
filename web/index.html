@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Steady · Weight & calorie tracker</title>
+  <meta name="description" content="Track meals and weigh-ins, see your real weight trend, and get a calorie target that adapts to how your body actually responds.">
+  <meta name="theme-color" content="#f6f4ef">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Steady">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232f7d5b'/%3E%3Cpath d='M7 21c4 0 5-9 9-9s5 6 9 6' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    // Apply the saved theme before the page draws (light unless chosen otherwise).
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem('steady-theme') || 'light';
+    } catch {
+      document.documentElement.dataset.theme = 'light';
+    }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="./" aria-label="Steady home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8"/><path d="M7 21c4 0 5-9 9-9s5 6 9 6"/></svg>
+        <span>Steady</span>
+      </a>
+      <div class="topbar-actions">
+        <div class="datenav" aria-label="Choose day">
+          <button type="button" class="icon-btn" data-day="-1" aria-label="Previous day">‹</button>
+          <button type="button" class="date-label" id="date-label" title="Jump to today"></button>
+          <button type="button" class="icon-btn" data-day="1" aria-label="Next day">›</button>
+        </div>
+        <button type="button" class="icon-btn theme-btn" id="theme-btn" data-action="toggle-theme"></button>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" data-tab="today" aria-current="page">Today</button>
+      <button type="button" data-tab="body">Body</button>
+      <button type="button" data-tab="insights">Insights</button>
+      <button type="button" data-tab="tools">Tools</button>
+      <button type="button" data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main id="main" class="wrap" aria-live="polite">
+    <p class="loading">Loading…</p>
+  </main>
+
+  <dialog id="food-dialog" class="sheet" aria-labelledby="food-title">
+    <form method="dialog" class="sheet-head">
+      <h2 id="food-title">Log food</h2>
+      <button class="icon-btn" value="cancel" aria-label="Close">✕</button>
+    </form>
+    <div class="chips" role="radiogroup" aria-label="Meal" id="slot-chips">
+      <button type="button" role="radio" data-slot-pick="breakfast">Breakfast</button>
+      <button type="button" role="radio" data-slot-pick="lunch">Lunch</button>
+      <button type="button" role="radio" data-slot-pick="dinner">Dinner</button>
+      <button type="button" role="radio" data-slot-pick="snacks">Snacks</button>
+    </div>
+    <div class="seg" role="tablist">
+      <button type="button" role="tab" data-mode="search" aria-selected="true">Search</button>
+      <button type="button" role="tab" data-mode="quick" aria-selected="false">Quick add</button>
+      <button type="button" role="tab" data-mode="mine" aria-selected="false">My foods</button>
+    </div>
+
+    <div data-pane="search" class="pane">
+      <div class="search-row">
+        <label class="field grow">
+          <span class="sr-only">What did you eat?</span>
+          <input id="food-q" type="search" placeholder="1 bowl white rice, 150g chicken breast, 2 eggs" autocomplete="off" enterkeyhint="done">
+        </label>
+        <button type="button" class="btn" id="scan-btn" hidden aria-label="Scan a barcode">Scan</button>
+      </div>
+      <video id="scan-video" class="scan-video" playsinline muted hidden></video>
+      <p class="muted small" id="food-hint">Type an amount and a food, or a barcode number. Enter adds the top match.</p>
+      <ul id="food-results" class="results" role="listbox" aria-label="Matching foods"></ul>
+      <div id="food-pick" class="pick" hidden>
+        <div>
+          <div class="pick-name"></div>
+          <div class="pick-per muted small"></div>
+        </div>
+        <div class="pick-row">
+          <input id="pick-qty" type="number" min="0" max="5000" step="any" inputmode="decimal" aria-label="Amount">
+          <select id="pick-unit" aria-label="Unit"></select>
+        </div>
+        <div class="pick-total"></div>
+        <div class="row">
+          <button type="button" class="btn primary grow" id="food-add">Add</button>
+          <button type="button" class="btn" id="food-save" hidden>Save to My foods</button>
+        </div>
+      </div>
+    </div>
+
+    <form data-pane="quick" id="quick-form" class="pane" hidden>
+      <p class="muted small">For a one-off meal where you already know the calories, like a restaurant dish with nutrition info.</p>
+      <label class="field"><span>Name</span><input name="name" required maxlength="80" placeholder="Salad bowl from Saladstop"></label>
+      <div class="grid4">
+        <label class="field"><span>kcal</span><input name="kcal" type="number" required min="0" max="5000" step="any" inputmode="decimal"></label>
+        <label class="field"><span>Protein g</span><input name="protein" type="number" min="0" max="500" step="any" value="0" inputmode="decimal"></label>
+        <label class="field"><span>Carbs g</span><input name="carbs" type="number" min="0" max="1000" step="any" value="0" inputmode="decimal"></label>
+        <label class="field"><span>Fat g</span><input name="fat" type="number" min="0" max="500" step="any" value="0" inputmode="decimal"></label>
+      </div>
+      <button class="btn primary block">Add</button>
+    </form>
+
+    <div data-pane="mine" class="pane" hidden>
+      <form id="mine-form" class="stack tight">
+        <p class="muted small">Save a packaged food from its nutrition label, then log it by search like any other food.</p>
+        <label class="field"><span>Name</span><input name="name" required maxlength="60" placeholder="Marigold HL milk"></label>
+        <div class="grid2">
+          <label class="field"><span>Values on the label are per</span>
+            <select name="per"><option value="100g">100 g / 100 ml</option><option value="serving">serving</option></select>
+          </label>
+          <div class="grid2 inner">
+            <label class="field"><span>Serving</span><input name="servingUnit" maxlength="20" placeholder="packet"></label>
+            <label class="field"><span>Grams</span><input name="servingGrams" type="number" min="1" max="2000" step="any" inputmode="decimal" placeholder="200"></label>
+          </div>
+        </div>
+        <div class="grid4">
+          <label class="field"><span>kcal</span><input name="kcal" type="number" required min="0" step="any" inputmode="decimal"></label>
+          <label class="field"><span>Protein g</span><input name="protein" type="number" min="0" step="any" value="0" inputmode="decimal"></label>
+          <label class="field"><span>Carbs g</span><input name="carbs" type="number" min="0" step="any" value="0" inputmode="decimal"></label>
+          <label class="field"><span>Fat g</span><input name="fat" type="number" min="0" step="any" value="0" inputmode="decimal"></label>
+        </div>
+        <button class="btn primary block">Save food</button>
+      </form>
+      <ul id="mine-list" class="items mine"></ul>
+    </div>
+    <p class="form-error" id="food-error" role="alert"></p>
+  </dialog>
+
+  <dialog id="edit-dialog" class="sheet" aria-labelledby="edit-title">
+    <form method="dialog" class="sheet-head">
+      <h2 id="edit-title">Edit entry</h2>
+      <button class="icon-btn" value="cancel" aria-label="Close">✕</button>
+    </form>
+    <form id="edit-form" class="stack tight">
+      <div>
+        <div class="edit-name pick-name"></div>
+        <div class="edit-meta muted small"></div>
+      </div>
+      <div class="grid2">
+        <label class="field"><span class="edit-qty-label">Weight (g)</span><input name="qty" type="number" min="0" step="any" inputmode="decimal" required></label>
+        <label class="field"><span>Meal</span>
+          <select name="slot"><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snacks">Snacks</option></select>
+        </label>
+      </div>
+      <div class="edit-total pick-total"></div>
+      <p class="form-error" id="edit-error" role="alert"></p>
+      <div class="row">
+        <button class="btn primary grow">Save</button>
+        <button type="button" class="btn danger" id="edit-delete">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
