@@ -204,7 +204,8 @@ describe('food data', () => {
   test('white rice uses the USDA values', () => {
     const rice = FOODS.find((f) => f.id === 'rice-white');
     assert.equal(rice.kcal, 130);
-    assert.deepEqual(nutritionFor(rice, 200), { kcal: 260, protein: 5.4, carbs: 56.3, fat: 0.6 });
+    assert.equal(rice.source.fdcId, 168878);
+    assert.deepEqual(nutritionFor(rice, 200), { kcal: 260, protein: 5.4, carbs: 56.4, fat: 0.6 });
   });
 });
 
