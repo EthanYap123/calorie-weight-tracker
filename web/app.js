@@ -865,7 +865,7 @@ function settingsView(d) {
     ${remindersCard()}
     <article class="card stack">
       <div class="card-head"><h2>Food search</h2></div>
-      <p class="muted">Foods not in the built-in list are looked up in the USDA FoodData Central database. Without a key you get about 30 searches an hour. A <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noopener">free USDA key</a> (it only needs an email) allows 1,000 an hour. It stays on this device.</p>
+      <p class="muted">Foods not in the built-in list are looked up in the USDA FoodData Central database. Without a key you get about 30 searches an hour. A <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noopener">free USDA key</a> (it only needs an email) allows 1,000 an hour. ${source.account ? 'It is saved to your account, so every device you log in on uses it.' : 'It stays on this device.'}</p>
       <form id="fdc-form" class="row wrap-row">
         <label class="field grow"><span>USDA API key</span><input name="key" autocomplete="off" spellcheck="false" placeholder="Using the shared demo key" value="${esc(fdcKey() === 'DEMO_KEY' ? '' : fdcKey())}"></label>
         <button class="btn">Save key</button>
@@ -1042,6 +1042,25 @@ function fdcKey() {
     return localStorage.getItem(KEY_STORE) || 'DEMO_KEY';
   } catch {
     return 'DEMO_KEY';
+  }
+}
+
+function setLocalKey(key) {
+  try {
+    if (key) localStorage.setItem(KEY_STORE, key);
+    else localStorage.removeItem(KEY_STORE);
+  } catch {
+    // Not cached: searches fall back to the demo key on this visit.
+  }
+}
+
+/** Online version: the account holds the USDA key and this device keeps a copy. */
+async function syncSettings() {
+  if (!source.account?.loggedIn()) return;
+  try {
+    setLocalKey((await source.account.settings()).fdcKey);
+  } catch {
+    // Offline or logged out: keep using the copy on this device.
   }
 }
 
@@ -1413,6 +1432,7 @@ document.addEventListener('click', async (e) => {
       break;
     case 'logout':
       source.account.logout();
+      setLocalKey(null);
       state.tab = 'today';
       renderLogin('login');
       break;
@@ -1421,6 +1441,7 @@ document.addEventListener('click', async (e) => {
       if (!password) return;
       try {
         await source.account.deleteAccount(password);
+        setLocalKey(null);
         state.tab = 'today';
         renderLogin('signup');
         toast('Account deleted');
@@ -1541,6 +1562,7 @@ main.addEventListener('submit', async (e) => {
     button.disabled = true;
     try {
       await source.account[state.authMode === 'signup' ? 'register' : 'login'](f.email, f.password);
+      await syncSettings();
       state.tab = 'today';
       state.date = localToday();
       await refresh();
@@ -1552,10 +1574,22 @@ main.addEventListener('submit', async (e) => {
   }
 
   if (form.id === 'fdc-form') {
+    const key = f.key.trim();
+    if (source.account) {
+      try {
+        await source.account.saveSettings({ fdcKey: key });
+      } catch (err) {
+        toast(err.message, true);
+        return;
+      }
+      setLocalKey(key);
+      toast(key ? 'USDA key saved to your account' : 'Using the shared demo key');
+      return;
+    }
     try {
-      if (f.key.trim()) localStorage.setItem(KEY_STORE, f.key.trim());
+      if (key) localStorage.setItem(KEY_STORE, key);
       else localStorage.removeItem(KEY_STORE);
-      toast(f.key.trim() ? 'USDA key saved on this device' : 'Using the shared demo key');
+      toast(key ? 'USDA key saved on this device' : 'Using the shared demo key');
     } catch {
       toast('Could not save the key in this browser.', true);
     }
@@ -1653,6 +1687,7 @@ const wantsDemo = params.has('demo');
 if (['today', 'body', 'insights', 'tools', 'settings'].includes(params.get('tab'))) state.tab = params.get('tab');
 if (source.firstVisit && wantsDemo) await source.loadDemo(state.today);
 await refresh();
+syncSettings();
 scheduleNotifications();
 
 // Installable and usable offline. Needs https or localhost.

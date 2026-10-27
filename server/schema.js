@@ -101,6 +101,11 @@ export const SCHEMA = [
     "end"       TEXT,
     PRIMARY KEY (user_id, id)
   )`,
+  // Settings that follow the account to every device, such as the USDA key.
+  `CREATE TABLE IF NOT EXISTS user_settings (
+    user_id     INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    fdc_key     TEXT
+  )`,
   // Fixed-window counters for sign-up, login and write limits. Kept in the
   // database because serverless functions don't share memory.
   `CREATE TABLE IF NOT EXISTS rate_limits (

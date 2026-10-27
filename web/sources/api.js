@@ -65,6 +65,9 @@ export const source = {
       remember(await call('POST', '/auth/register', { email, password }));
     },
     logout: () => remember(null),
+    /** Settings saved to the account, e.g. { fdcKey }. */
+    settings: () => call('GET', '/settings'),
+    saveSettings: (settings) => call('PUT', '/settings', settings),
     async deleteAccount(password) {
       await call('POST', '/account/delete', { password });
       remember(null);
