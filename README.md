@@ -42,7 +42,7 @@ On a phone, use "Add to Home Screen" to install either one as an app. See [Deplo
 
 - **Generic foods** use per-100 g values from the USDA FoodData Central SR Legacy dataset. [`scripts/fetch-usda.js`](scripts/fetch-usda.js) looks each one up by its exact USDA description and writes [`core/usda-data.js`](core/usda-data.js) with the FDC ID, so every number can be traced to its source. Re-run it with a free [api.data.gov key](https://fdc.nal.usda.gov/api-key-signup) in `FDC_API_KEY`.
 - **Hawker dishes and drinks** are typical stall portions with the plate weight, converted to per-100 g. Real plates vary by about ±20%, so the app labels them as estimates. For a precise number, weigh the food or use the closest generic foods.
-- **Online foods** from USDA FoodData Central ([`core/fdc.js`](core/fdc.js)) use its per-100 g values and household portions. USDA allows these requests straight from the browser, so this also works in the Pages build. The shared `DEMO_KEY` allows about 30 searches an hour; a free personal key, entered in Settings and kept on the device, allows 1,000.
+- **Online foods** from USDA FoodData Central ([`core/fdc.js`](core/fdc.js)) use its per-100 g values and household portions. USDA allows these requests straight from the browser, so this also works in the Pages build. The shared `DEMO_KEY` allows about 30 searches an hour; a free personal key, entered in Settings, allows 1,000. In the online app the key is saved to your account, so every device you log in on uses it; in the Pages build it stays on the device.
 - **Packaged foods** come from [Open Food Facts](https://world.openfoodfacts.org) label data ([`core/off.js`](core/off.js)). Labels with missing values, or calories that don't fit their macros (often kJ typed as kcal), are skipped rather than guessed. Search by name goes through the server in server mode, because Open Food Facts' newer search blocks browser requests. The Pages build tries their older search directly and falls back to barcode lookup, which always works from the browser.
 - **Every food is checked** in the tests: calories must agree with protein × 4 + carbs × 4 + fat × 9 (the Atwater factors) within 15%, which catches typos in the data.
 
@@ -142,6 +142,7 @@ All routes except the first three need `Authorization: Bearer <token>` and retur
 | POST | `/api/auth/login` | `{ email, password }` | `{ token, user }`; 401 if wrong; 429 when rate-limited |
 | GET | `/api/auth/me` | | `{ email }` |
 | POST | `/api/account/delete` | `{ password }` | 204; deletes the account and all its data |
+| GET / PUT | `/api/settings` | `{ fdcKey }` (a USDA key, or empty to clear) | Settings that follow the account to every device |
 | GET | `/api/dashboard` | `?date=YYYY-MM-DD` | Everything for that day: totals, target, macros, trend, pace, goal date, adaptive estimate, 14-day intake, streak |
 | GET / PUT | `/api/profile` | sex, age, heightCm, activity, goalKg, weeklyRateKg, name | Profile |
 | POST | `/api/weights` | `{ date, kg }` (one per day, re-posting replaces it) | 201 + entry |
@@ -173,7 +174,7 @@ Invalid input returns `400` with every problem listed in `errors`, for example `
 npm test
 ```
 
-139 tests with Node's built-in test runner. The server tests run on real Postgres: PGlite by default, or a Postgres server when `TEST_DATABASE_URL` is set (CI does both).
+140 tests with Node's built-in test runner. The server tests run on real Postgres: PGlite by default, or a Postgres server when `TEST_DATABASE_URL` is set (CI does both).
 
 - Food entry: 11 typed phrases parsed into amount, unit and food, same calories by portion or by grams, ml-to-grams for drinks, and clear errors for units a food doesn't have.
 - Food data: unique ids, a portion for every food, and calories that agree with the macros.

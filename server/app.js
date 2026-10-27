@@ -7,6 +7,7 @@ import { searchOnline } from '../core/off.js';
 import { createTracker } from '../core/service.js';
 import { createAuth } from './auth.js';
 import { createPgStore } from './pg-store.js';
+import { getSettings, saveSettings } from './settings.js';
 
 const root = (dir) => fileURLToPath(new URL(`../${dir}/`, import.meta.url));
 
@@ -47,6 +48,8 @@ export function createApp(db, { jwtSecret, limits, trustProxy = false } = {}) {
   });
 
   api.get('/auth/me', (req, res) => res.json({ email: req.user.email }));
+  api.get('/settings', async (req, res) => res.json(await getSettings(db, req.user.id)));
+  api.put('/settings', async (req, res) => res.json(await saveSettings(db, req.user.id, req.body)));
   api.post('/account/delete', async (req, res) => {
     await auth.deleteAccount(req.user.id, req.body?.password);
     res.status(204).end();

@@ -32,6 +32,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The UI isn't imported by the tests, so at least make sure it parses.
+      - name: Syntax-check the web UI
+        run: for f in web/*.js web/sources/*.js; do node --check "$f"; done
 
       - name: Tests on embedded Postgres (PGlite)
         run: npm test

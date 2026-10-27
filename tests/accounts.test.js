@@ -94,9 +94,10 @@ describe('accounts', () => {
     const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [call.email]);
     const id = rows[0].id;
     assert.equal((await call('POST', '/account/delete', { password: 'wrong password' })).status, 401);
+    await call('PUT', '/settings', { fdcKey: 'k'.repeat(40) });
     assert.equal((await call('POST', '/account/delete', { password: call.password })).status, 204);
     assert.equal((await call('GET', `/dashboard?date=${TODAY}`)).status, 401);
-    for (const table of ['profiles', 'weights', 'meals', 'water', 'exercises', 'checkins', 'fasts', 'id_counters']) {
+    for (const table of ['profiles', 'weights', 'meals', 'water', 'exercises', 'checkins', 'fasts', 'id_counters', 'user_settings']) {
       const left = await db.query(`SELECT 1 FROM ${table} WHERE user_id = $1`, [id]);
       assert.equal(left.rows.length, 0, table);
     }
@@ -190,6 +191,20 @@ describe('each account only sees its own data', () => {
     assert.equal((await bob('POST', '/reset', {})).status, 204);
     assert.deepEqual(await aliceSnapshot(), before);
     assert.equal(before.export.checkins[0].note, 'private note');
+  });
+
+  test('the USDA key is saved per account and follows the login', async () => {
+    const key = 'A'.repeat(20) + 'b1'.repeat(10);
+    assert.deepEqual((await alice('GET', '/settings')).body, { fdcKey: null });
+    assert.deepEqual((await alice('PUT', '/settings', { fdcKey: ` ${key} ` })).body, { fdcKey: key });
+    // A second device logging in to the same account gets it.
+    const other = await server.request('POST', '/auth/login', { email: alice.email, password: alice.password });
+    assert.equal((await server.request('GET', '/settings', null, other.body.token)).body.fdcKey, key);
+    // Nobody else does.
+    assert.deepEqual((await bob('GET', '/settings')).body, { fdcKey: null });
+    assert.equal((await alice('PUT', '/settings', { fdcKey: 'not a key!' })).status, 400);
+    assert.equal((await server.request('GET', '/settings')).status, 401);
+    assert.deepEqual((await alice('PUT', '/settings', { fdcKey: '' })).body, { fdcKey: null });
   });
 
   test('a store refuses to run without a user id', () => {
