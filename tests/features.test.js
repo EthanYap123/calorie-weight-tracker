@@ -5,8 +5,7 @@ import { bmi, bmiCategory, bodyFatCategory, bodyFatNavy, healthyRange, waistToHe
 import { exerciseKcal, stepsKcal } from '../core/exercise.js';
 import { createTracker } from '../core/service.js';
 import { createMemoryStore } from '../core/store-memory.js';
-import { createApp } from '../server/app.js';
-import { createSqliteStore } from '../server/sqlite-store.js';
+import { pgStore, startServer } from './helpers.js';
 
 const TODAY = '2026-10-26';
 const PROFILE = { name: '', sex: 'male', age: 21, heightCm: 176, activity: 'light', goalKg: 70, weeklyRateKg: 0.5 };
@@ -52,11 +51,11 @@ describe('exercise maths', () => {
 
 for (const [label, makeStore] of [
   ['memory store', () => createMemoryStore()],
-  ['SQLite store', () => createSqliteStore()],
+  ['Postgres store', pgStore],
 ]) {
   describe(`daily features on the ${label}`, () => {
     const setup = async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.saveProfile(PROFILE);
       await t.logWeight({ date: TODAY, kg: 75 });
       return t;
@@ -91,7 +90,7 @@ for (const [label, makeStore] of [
     });
 
     test('exercise needs a weight to work out the burn', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await assert.rejects(t.addExercise({ date: TODAY, activity: 'gym', minutes: 45 }), /Log your weight first/);
     });
 
@@ -145,7 +144,7 @@ for (const [label, makeStore] of [
       await a.logMeasurement({ date: TODAY, waistCm: 84, neckCm: 38 });
       await a.startFast('2026-10-25T12:00:00.000Z');
       const dump = await a.exportData();
-      const b = createTracker(makeStore());
+      const b = createTracker(await makeStore());
       await b.importData(dump);
       assert.deepEqual(await b.exportData(), dump);
       assert.deepEqual(await b.dashboard(TODAY), await a.dashboard(TODAY));
@@ -155,22 +154,12 @@ for (const [label, makeStore] of [
 
 describe('HTTP API for the daily features', () => {
   let server;
-  let base;
+  let call;
   before(async () => {
-    server = createApp(createSqliteStore()).listen(0);
-    await new Promise((r) => server.once('listening', r));
-    base = `http://localhost:${server.address().port}/api`;
+    server = await startServer();
+    call = await server.client();
   });
   after(() => server.close());
-
-  const call = async (method, path, body) => {
-    const res = await fetch(base + path, {
-      method,
-      headers: body ? { 'content-type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return { status: res.status, body: res.status === 204 ? null : await res.json() };
-  };
 
   test('API and browser store stay identical', async () => {
     const local = createTracker(createMemoryStore());

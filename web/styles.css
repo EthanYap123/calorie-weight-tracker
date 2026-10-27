@@ -225,6 +225,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 /* ---------- setup ---------- */
 
 .setup { max-width: 640px; margin: 12px auto 0; padding: 28px; gap: 14px; }
+/* Online version, logged out: nothing to navigate yet. */
+.signed-out .tabs, .signed-out .datenav { display: none; }
 
 /* ---------- today ---------- */
 
