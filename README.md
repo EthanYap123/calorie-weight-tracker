@@ -4,7 +4,7 @@ Type what you ate the way you'd say it, like "1 bowl white rice", "150g chicken 
 
 Steady runs in two ways, from the same code:
 
-- **Online app with an account** (Vercel + Neon Postgres): log in on your phone and your laptop and see the same data on both.
+- **Online app with an account:** https://calorie-weight-tracker.vercel.app (Vercel + Neon Postgres). Log in on your phone and your laptop and see the same data on both.
 - **Browser demo, no account:** https://ethanyap123.github.io/calorie-weight-tracker/ runs the same tracker code in your browser and saves to `localStorage` on that device only. **Try it with sample data:** https://ethanyap123.github.io/calorie-weight-tracker/?demo
 
 On a phone, use "Add to Home Screen" to install either one as an app. See [Deployment](#deployment).
