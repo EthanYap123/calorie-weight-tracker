@@ -6,7 +6,7 @@ import { icsFile, normaliseReminders, nudges, schedule } from '../core/reminders
 import { dailyHistory, weekStats } from '../core/report.js';
 import { createTracker } from '../core/service.js';
 import { createMemoryStore } from '../core/store-memory.js';
-import { createSqliteStore } from '../server/sqlite-store.js';
+import { pgStore, startServer } from './helpers.js';
 
 const TODAY = '2026-10-26';
 const PROFILE = { name: '', sex: 'female', age: 30, heightCm: 165, activity: 'light', goalKg: 60, weeklyRateKg: 0.5 };
@@ -107,11 +107,11 @@ describe('reminders', () => {
 
 for (const [label, makeStore] of [
   ['memory store', () => createMemoryStore()],
-  ['SQLite store', () => createSqliteStore()],
+  ['Postgres store', pgStore],
 ]) {
   describe(`check-ins on the ${label}`, () => {
     test('save, update, show on the dashboard and delete', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.saveProfile(PROFILE);
       await t.logWeight({ date: TODAY, kg: 64 });
       await t.logCheckin({ date: TODAY, sleepHours: '7.5', sleepQuality: '4', mood: '3' });
@@ -127,7 +127,7 @@ for (const [label, makeStore] of [
     });
 
     test('the sample data fills the weekly report', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.loadDemo(TODAY);
       const { report, history } = await t.dashboard(TODAY);
       assert.equal(history.length, 28);

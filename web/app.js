@@ -74,11 +74,16 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 // ---------- data ----------
 
+/** The online version needs a login; the browser version never does. */
+const signedOut = () => Boolean(source.account && !source.account.loggedIn());
+
 async function refresh() {
   state.today = localToday();
+  if (signedOut()) return renderLogin();
   try {
     state.data = await source.dashboard(state.date);
   } catch (err) {
+    if (err.status === 401) return renderLogin();
     main.innerHTML = `<div class="card empty"><h2>Can't reach the tracker</h2><p>${esc(err.message)}</p></div>`;
     return;
   }
@@ -130,6 +135,8 @@ function renderBanner() {
 }
 
 function render() {
+  if (signedOut()) return renderLogin();
+  document.body.classList.remove('signed-out');
   renderHeader();
   renderBanner();
   const d = state.data;
@@ -142,6 +149,44 @@ function render() {
     runCalcs();
     tickFasting();
   }
+}
+
+// ---------- account (online version only) ----------
+
+function renderLogin(mode = state.authMode ?? 'login') {
+  state.authMode = mode;
+  state.data = null;
+  document.body.classList.add('signed-out');
+  $('#banner').hidden = true;
+  const signup = mode === 'signup';
+  main.innerHTML = `<section class="setup card">
+    <p class="eyebrow">Steady</p>
+    <h1>${signup ? 'Create your account' : 'Log in'}</h1>
+    <p class="muted">Your meals, weigh-ins and everything else you log sync to every phone and computer you log in on.</p>
+    <div class="seg" role="group" aria-label="Log in or sign up">
+      <button type="button" data-action="auth-mode" data-mode="login" aria-pressed="${!signup}">Log in</button>
+      <button type="button" data-action="auth-mode" data-mode="signup" aria-pressed="${signup}">Create account</button>
+    </div>
+    <form id="login-form" class="stack">
+      <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="email" value="${esc(source.account.email() ?? '')}"></label>
+      <label class="field"><span>Password${signup ? ' (at least 8 characters)' : ''}</span><input name="password" type="password" required minlength="${signup ? 8 : 1}" maxlength="72" autocomplete="${signup ? 'new-password' : 'current-password'}"></label>
+      <p class="form-error" role="alert"></p>
+      <button class="btn primary">${signup ? 'Create account' : 'Log in'}</button>
+    </form>
+    ${signup ? '<p class="muted small">Already using Steady in the browser-only version? After signing up, go there, choose Settings, Export JSON, then use Import JSON here to bring everything across.</p>' : ''}
+  </section>`;
+}
+
+function accountCard() {
+  if (!source.account) return '';
+  return `<article class="card stack">
+      <div class="card-head"><h2>Account</h2></div>
+      <p class="muted">Logged in as <strong>${esc(source.account.email() ?? '')}</strong>. Your data syncs to every device you log in on.</p>
+      <div class="row wrap-row">
+        <button type="button" class="btn" data-action="logout">Log out</button>
+        <button type="button" class="btn danger" data-action="delete-account">Delete account</button>
+      </div>
+    </article>`;
 }
 
 // ---------- views ----------
@@ -187,6 +232,10 @@ function setupView(d) {
         <button type="button" class="btn ghost" data-action="demo">Try it with sample data</button>
       </div>
     </form>
+    ${source.mode === 'api'
+      ? `<p class="muted">Moving from the browser-only version? Export JSON from its Settings, then import the file here.</p>
+         <div class="row"><label class="btn">Import JSON<input type="file" accept="application/json,.json" id="import-file" hidden></label></div>`
+      : ''}
   </section>`;
 }
 
@@ -812,6 +861,7 @@ function settingsView(d) {
           .join('')}
       </div>
     </article>
+    ${accountCard()}
     ${remindersCard()}
     <article class="card stack">
       <div class="card-head"><h2>Food search</h2></div>
@@ -821,7 +871,7 @@ function settingsView(d) {
         <button class="btn">Save key</button>
       </form>
       <div class="card-head"><h2>Your data</h2></div>
-      <p class="muted">${local ? 'Everything is stored in this browser only. Export a copy to move it to another device.' : 'Stored in the SQLite database on the server.'}</p>
+      <p class="muted">${local ? 'Everything is stored in this browser only. Export a copy to move it to another device.' : 'Stored in your account on the server. Export a copy any time as a backup.'}</p>
       <div class="row wrap-row">
         <button type="button" class="btn" data-action="export">Export JSON</button>
         <label class="btn">Import JSON<input type="file" accept="application/json,.json" id="import-file" hidden></label>
@@ -1358,6 +1408,27 @@ document.addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   switch (btn.dataset.action) {
+    case 'auth-mode':
+      renderLogin(btn.dataset.mode);
+      break;
+    case 'logout':
+      source.account.logout();
+      state.tab = 'today';
+      renderLogin('login');
+      break;
+    case 'delete-account': {
+      const password = prompt('This permanently deletes your account and everything in it. Enter your password to confirm.');
+      if (!password) return;
+      try {
+        await source.account.deleteAccount(password);
+        state.tab = 'today';
+        renderLogin('signup');
+        toast('Account deleted');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      break;
+    }
     case 'add-food':
       openFood(btn.dataset.slot);
       break;
@@ -1464,6 +1535,21 @@ main.addEventListener('submit', async (e) => {
   const form = e.target;
   const f = Object.fromEntries(new FormData(form));
   const error = $('.form-error', form);
+
+  if (form.id === 'login-form') {
+    const button = $('button.primary', form);
+    button.disabled = true;
+    try {
+      await source.account[state.authMode === 'signup' ? 'register' : 'login'](f.email, f.password);
+      state.tab = 'today';
+      state.date = localToday();
+      await refresh();
+    } catch (err) {
+      error.textContent = err.message;
+      button.disabled = false;
+    }
+    return;
+  }
 
   if (form.id === 'fdc-form') {
     try {

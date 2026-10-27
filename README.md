@@ -2,13 +2,14 @@
 
 Type what you ate the way you'd say it, like "1 bowl white rice", "150g chicken breast" or "2 eggs", and Steady logs the exact grams and calories. Add your morning weigh-ins and it gives you a daily calorie target. Most trackers take that target from a formula and never change it. Steady checks it against your own results: after a few weeks of logging it measures how many calories you really burn, using what you ate and how your weight moved, and adjusts the target to match.
 
-**Use it:** https://ethanyap123.github.io/calorie-weight-tracker/ (on a phone, use "Add to Home Screen" to install it as an app that also works offline)
+Steady runs in two ways, from the same code:
 
-**Try it with sample data:** https://ethanyap123.github.io/calorie-weight-tracker/?demo
+- **Online app with an account** (Vercel + Neon Postgres): log in on your phone and your laptop and see the same data on both.
+- **Browser demo, no account:** https://ethanyap123.github.io/calorie-weight-tracker/ runs the same tracker code in your browser and saves to `localStorage` on that device only. **Try it with sample data:** https://ethanyap123.github.io/calorie-weight-tracker/?demo
 
-The Pages build runs the same tracker code in your browser and saves to `localStorage` on your device, so it needs no server or account. See [Deployment](#deployment).
+On a phone, use "Add to Home Screen" to install either one as an app. See [Deployment](#deployment).
 
-![Node.js](https://img.shields.io/badge/Node.js-22-2f7d5b) ![Express](https://img.shields.io/badge/Express-5-2f7d5b) ![SQLite](https://img.shields.io/badge/SQLite-node%3Asqlite-2f7d5b) [![CI](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml)
+![Node.js](https://img.shields.io/badge/Node.js-22-2f7d5b) ![Express](https://img.shields.io/badge/Express-5-2f7d5b) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-2f7d5b) [![CI](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml)
 
 ## Features
 
@@ -34,6 +35,7 @@ The Pages build runs the same tracker code in your browser and saves to `localSt
 - **Adaptive maintenance.** Once you have 14 fully logged days and 6 weigh-ins in a 4-week window, Steady works out your real maintenance calories and uses that number instead of the formula.
 - **Safety limits.** Weight loss is capped at 1% of body weight a week and gain at 0.5 kg a week. The target never drops below 1,200 kcal (women) or 1,500 kcal (men). The app tells you when either limit applies.
 - **Insights.** See your 14-day intake against your target, days within 10% of target, logging streak, and a plain explanation of every number.
+- **Accounts and sync.** In the online app, sign up with an email and password and your log follows you to every device. Each account only ever sees its own data. Delete your account from Settings and every row goes with it.
 - **Your data.** Light mode by default, with dark or match-device in Settings. Export and import JSON (everything: meals, weights, water, exercise, measurements, fasts and saved foods), load sample data or start fresh. It installs to your home screen, works offline, and runs on phone and desktop in light and dark mode.
 
 ## Food data and accuracy
@@ -68,41 +70,59 @@ flowchart LR
     UI[web/app.js<br/>views, food dialog, SVG charts]
     UI --> SRC{config.js MODE}
   end
-  SRC -->|api| API[web/sources/api.js<br/>fetch /api/*]
+  SRC -->|api| API[web/sources/api.js<br/>fetch /api/* + login token]
   SRC -->|local| LOC[web/sources/local.js]
   API --> EX[Express 5<br/>server/app.js]
-  EX --> SVC
+  EX --> AUTH[server/auth.js<br/>bcrypt · JWT · rate limits]
+  AUTH --> SVC
   LOC --> SVC
   subgraph core["core/ (shared, no dependencies)"]
     SVC[service.js<br/>createTracker]
     SVC --> CALC[nutrition · trend · adaptive<br/>summary · foods · validate]
   end
   SVC --> STORE{store}
-  STORE -->|server| SQL[(SQLite<br/>node:sqlite)]
+  STORE -->|server| SQL[(Postgres, per user<br/>Neon or PGlite)]
   STORE -->|demo| MEM[memory store<br/>+ localStorage]
 ```
 
-All the logic lives in `core/`: plain ES modules with no dependencies that run in both Node and the browser. The Express routes are thin wrappers around `createTracker(store)`, and the browser demo calls the same function with a different store. Both stores have the same seven methods, so the server and the demo can't drift apart. A test runs the same actions through the HTTP API (SQLite) and through the browser store and checks the dashboards are identical.
+All the logic lives in `core/`: plain ES modules with no dependencies that run in both Node and the browser. The Express routes are thin wrappers around `createTracker(store)`, and the browser demo calls the same function with a different store. Both stores have the same methods, so the server and the demo can't drift apart. A test runs the same actions through the HTTP API (Postgres) and through the browser store and checks the dashboards are identical.
+
+### Accounts and data separation
+
+- Passwords are hashed with bcrypt. Logging in returns a JWT (HS256, signed with `JWT_SECRET_KEY`, 30 days) that the app sends as a `Bearer` header.
+- Every route except health, sign-up and login needs a valid token for an account that still exists.
+- The server store is created per request for the logged-in user ([`server/pg-store.js`](server/pg-store.js)). Every query has `user_id = $1`, and every table's key starts with `user_id`, so a guessed id or date from another account matches nothing and returns 404.
+- Ids are numbered per account (meal 1, 2, 3...), like the browser store. Imports, sample data and "Start fresh" replace only your own rows, in one transaction.
+- Rate limits are stored in Postgres, because serverless functions don't share memory: 5 sign-ups an hour per address, 10 logins per 15 minutes per address and per email, and 120 writes a minute per account.
+- API responses are sent with `Cache-Control: no-store`.
 
 ```
 core/        shared logic: body, exercise, report, reminders, foods, parse, fdc (USDA search), off (Open Food Facts), dates, nutrition, trend, adaptive, summary, validate, seed, service, memory store
-server/      Express app, SQLite store, entry point
+server/      Express app, Postgres store, schema, accounts, database adapter, local entry point
+api/         Vercel serverless entry (exports the Express app)
 web/         static UI (HTML, CSS, vanilla JS modules, hand-drawn SVG charts, manifest and service worker)
-scripts/     build-demo.js (Pages build), seed.js (fill the database), fetch-usda.js (food values)
-tests/       node:test suites for the core, both stores and the HTTP API
+scripts/     build-demo.js (Pages and Vercel builds), setup-db.js (schema), seed.js (sample data), fetch-usda.js (food values)
+tests/       node:test suites for the core, both stores, accounts and the HTTP API
 ```
 
 ## Running locally
 
-Needs Node.js 22.13 or newer, which includes the built-in `node:sqlite` module.
+Needs Node.js 22 or newer. You don't need to install Postgres: without `DATABASE_URL` the server runs [PGlite](https://pglite.dev) (real Postgres compiled to WebAssembly) and keeps its data in `data/pglite`.
 
 ```bash
 npm install
-npm run seed      # optional: eight weeks of sample data in data/tracker.db
-npm start         # http://localhost:3000
+npm start         # http://localhost:3000, then create an account
+npm run seed -- you@example.com your-password   # optional: eight weeks of sample data in that account
 ```
 
-Set `PORT` and `DB_FILE` to change the defaults (`DB_FILE=:memory:` keeps nothing on disk).
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DATABASE_URL` | none | A `postgres://` URL. Leave it out to use PGlite |
+| `PGLITE_DIR` | `data/pglite` | Where PGlite keeps its data (`memory://` keeps nothing) |
+| `JWT_SECRET_KEY` | a fixed local-only value | Secret for signing login tokens. Required in production |
+| `PORT` | 3000 | Port |
+
+`npm run db:setup` creates or updates the tables in `DATABASE_URL`. Every statement is safe to repeat.
 
 To try the static demo build:
 
@@ -113,8 +133,15 @@ npx serve _site   # or any static file server
 
 ## API
 
+All routes except the first three need `Authorization: Bearer <token>` and return `401` without it.
+
 | Method | Route | Body / query | Returns |
 | --- | --- | --- | --- |
+| GET | `/api/health` | | `{ ok }` after a database round trip |
+| POST | `/api/auth/register` | `{ email, password }` (8 to 72 bytes) | 201 + `{ token, user }`; 409 if the email is taken |
+| POST | `/api/auth/login` | `{ email, password }` | `{ token, user }`; 401 if wrong; 429 when rate-limited |
+| GET | `/api/auth/me` | | `{ email }` |
+| POST | `/api/account/delete` | `{ password }` | 204; deletes the account and all its data |
 | GET | `/api/dashboard` | `?date=YYYY-MM-DD` | Everything for that day: totals, target, macros, trend, pace, goal date, adaptive estimate, 14-day intake, streak |
 | GET / PUT | `/api/profile` | sex, age, heightCm, activity, goalKg, weeklyRateKg, name | Profile |
 | POST | `/api/weights` | `{ date, kg }` (one per day, re-posting replaces it) | 201 + entry |
@@ -135,7 +162,7 @@ npx serve _site   # or any static file server
 | GET | `/api/online-foods` | `?q=hl milk` | Packaged foods from Open Food Facts, per 100 g (502 if it can't be reached) |
 | GET / POST | `/api/my-foods` | `{ name, kcal, protein, carbs, fat, per?: '100g' \| 'serving', servingUnit?, servingGrams? }` | Saved foods (stored per 100 g) |
 | DELETE | `/api/my-foods/:id` | | 204 / 404 |
-| GET / POST | `/api/export`, `/api/import` | export JSON | Full backup / restore |
+| GET / POST | `/api/export`, `/api/import` | export JSON | Full backup / restore (works with exports from the browser demo) |
 | POST | `/api/demo`, `/api/reset` | `{ today }` for demo | 204 |
 
 Invalid input returns `400` with every problem listed in `errors`, for example `{"error": "...", "errors": ["Weight must be between 30 and 300."]}`.
@@ -146,7 +173,7 @@ Invalid input returns `400` with every problem listed in `errors`, for example `
 npm test
 ```
 
-122 tests with Node's built-in test runner:
+139 tests with Node's built-in test runner. The server tests run on real Postgres: PGlite by default, or a Postgres server when `TEST_DATABASE_URL` is set (CI does both).
 
 - Food entry: 11 typed phrases parsed into amount, unit and food, same calories by portion or by grams, ml-to-grams for drinks, and clear errors for units a food doesn't have.
 - Food data: unique ids, a portion for every food, and calories that agree with the macros.
@@ -156,13 +183,26 @@ npm test
 - Body and exercise maths against worked examples (BMI bands, US Navy body fat, MET burn), plus water, exercise, measurements, fasting, editing, copying and Recent foods on both stores and over HTTP.
 - Open Food Facts: label conversion (kJ to kcal, serving sizes), rejecting labels that don't add up, search fallback between services and barcode lookup, all against recorded responses.
 - Core maths: BMR against worked examples, safety limits, trend smoothing and gaps, pace regression, goal projection, adaptive maintenance on synthetic data, streaks and food search.
-- The tracker service on both the memory store and the SQLite store, including saved foods and export/import.
+- The tracker service on both the memory store and the Postgres store, including saved foods and export/import.
+- Accounts: sign-up and login checks, bcrypt hashes, the same answer for a wrong password and an unknown email, forged, expired and unsigned tokens rejected on every route, and account deletion removing every row.
+- Per-user data: a second account starts empty, can't read, change or delete the first account's rows by id or date, and its imports and resets leave the first account untouched.
+- Moving in: a browser-demo export imports into an account and gives identical exports and dashboards.
+- Rate limits on sign-up, login (per address and per email) and writes.
 - HTTP API status codes and validation errors.
 - The parity test between the API and the browser store (dashboards, exports and food search).
 
 ## Deployment
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request. It runs the tests, boots the real server and smoke-tests it with `curl`, and builds the browser demo. On `main` it then deploys `_site` to GitHub Pages. `scripts/build-demo.js` copies `web/` and `core/` and switches `config.js` to local mode. That's the only difference from the server build.
+**Online app (Vercel + Neon).** [`vercel.json`](vercel.json) sets no framework, region `sin1` (Singapore) and rewrites `/api/*` to [`api/index.js`](api/index.js), which exports the Express app as one serverless function. The build command, `npm run build:vercel`, runs the idempotent schema setup against `DATABASE_URL`, then copies `web/` and `core/` into `public/`, which Vercel serves as static files. To set it up:
+
+1. Import the repo into Vercel and deploy.
+2. In Settings, Environment Variables, add `JWT_SECRET_KEY` (a long random string, for example from `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+3. In the Storage tab, create a Neon Postgres database and connect it to the project, which adds `DATABASE_URL`.
+4. Redeploy.
+
+**Moving data from the browser demo.** The two versions live on different sites, so the app can't read the demo's `localStorage` directly. In the demo, open Settings and Export JSON. In the online app, sign up, then use Import JSON (on the welcome screen or in Settings).
+
+**Browser demo (GitHub Pages).** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request. It runs the tests on PGlite and on a Postgres service container, checks the schema setup can run twice, boots the real server and smoke-tests sign-up and the dashboard with `curl`, and builds both sites. On `main` it then deploys `_site` to GitHub Pages. `scripts/build-demo.js` copies `web/` and `core/` and switches `config.js` to local mode. That's the only difference from the server build.
 
 ## License
 

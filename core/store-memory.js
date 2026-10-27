@@ -1,6 +1,6 @@
 // In-memory store. The browser app wraps it with localStorage persistence;
-// tests use it directly. It has the same methods as the SQLite store in
-// server/sqlite-store.js, so the tracker service runs unchanged on either.
+// tests use it directly. It has the same methods as the Postgres store in
+// server/pg-store.js, so the tracker service runs unchanged on either.
 
 const inRange = (from = '0000-00-00', to = '9999-99-99') => (x) => x.date >= from && x.date <= to;
 const byDateThenId = (a, b) => a.date.localeCompare(b.date) || a.id - b.id;
@@ -44,7 +44,7 @@ export function createMemoryStore(initial = null, onChange = () => {}) {
   const foods = rows(get, 'foods', 'nextFoodId', save);
   const exercises = rows(get, 'exercises', 'nextExerciseId', save);
   const fasts = rows(get, 'fasts', 'nextFastId', save);
-  // Plain code-point order, the same as SQLite's default collation.
+  // Plain code-point order, the same as the server's COLLATE "C".
   const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id - b.id);
 
   return {

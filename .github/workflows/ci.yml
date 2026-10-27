@@ -16,6 +16,15 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # A real Postgres server, the same as production (Neon).
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,15 +32,34 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
 
-      # Boot the real server and hit it once, so a broken start script fails CI.
+      - name: Tests on embedded Postgres (PGlite)
+        run: npm test
+      - name: Tests on a Postgres server
+        run: npm test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+      # The Vercel build step, run twice to prove it is safe to repeat.
+      - name: Schema setup is repeatable
+        run: npm run db:setup && npm run db:setup
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+      # Boot the real server, sign up and hit it, so a broken start script fails CI.
       - name: Server smoke test
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          JWT_SECRET_KEY: ci-only-secret
+          PORT: 3000
         run: |
-          DB_FILE=:memory: PORT=3000 npm start &
+          npm start &
           for i in $(seq 1 20); do curl -fs localhost:3000/api/health && break; sleep 0.5; done
-          curl -fs "localhost:3000/api/dashboard?date=2026-01-01" > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'localhost:3000/api/dashboard?date=2026-01-01')" = 401
+          TOKEN=$(curl -fs localhost:3000/api/auth/register -H 'content-type: application/json' -d '{"email":"smoke@example.test","password":"smoke-test-password"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
+          curl -fs "localhost:3000/api/dashboard?date=2026-01-01" -H "authorization: Bearer $TOKEN" > /dev/null
           curl -fs localhost:3000/ | grep -q "<title>Steady"
+          npm run build:vercel && test -f public/core/service.js && grep -q "MODE = 'api'" public/config.js
 
       - name: Build browser demo
         run: npm run build:demo

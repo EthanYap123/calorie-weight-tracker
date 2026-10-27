@@ -1,24 +1,23 @@
 // The tracker service on both stores, plus the HTTP API. The parity test is
 // what keeps the browser demo honest: the same actions through the Express
-// API (SQLite) and through the in-browser store must give identical results.
+// API (Postgres) and through the in-browser store must give identical results.
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { DEMO_TRUE_MAINTENANCE } from '../core/seed.js';
 import { createTracker } from '../core/service.js';
 import { createMemoryStore } from '../core/store-memory.js';
-import { createApp } from '../server/app.js';
-import { createSqliteStore } from '../server/sqlite-store.js';
+import { pgStore, startServer } from './helpers.js';
 
 const TODAY = '2026-10-26';
 const PROFILE = { name: 'Sam', sex: 'female', age: 30, heightCm: 165, activity: 'light', goalKg: 60, weeklyRateKg: 0.5 };
 
 for (const [label, makeStore] of [
   ['memory store', () => createMemoryStore()],
-  ['SQLite store', () => createSqliteStore()],
+  ['Postgres store', pgStore],
 ]) {
   describe(`tracker on the ${label}`, () => {
     test('asks for setup until there is a profile and a weigh-in', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       assert.equal((await t.dashboard(TODAY)).setupNeeded, true);
       await t.saveProfile(PROFILE);
       assert.equal((await t.dashboard(TODAY)).setupNeeded, true);
@@ -30,7 +29,7 @@ for (const [label, makeStore] of [
     });
 
     test('logs and removes food', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.saveProfile(PROFILE);
       await t.logWeight({ date: TODAY, kg: 66 });
       const meal = await t.addMeal({ date: TODAY, slot: 'lunch', name: 'Laksa', kcal: 589, protein: 22, carbs: 55, fat: 32 });
@@ -48,7 +47,7 @@ for (const [label, makeStore] of [
     });
 
     test('a second weigh-in on the same day replaces the first', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.logWeight({ date: TODAY, kg: 66 });
       await t.logWeight({ date: TODAY, kg: 65.4 });
       const d = await t.dashboard(TODAY);
@@ -57,7 +56,7 @@ for (const [label, makeStore] of [
     });
 
     test('ignores entries after the day being viewed', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.logWeight({ date: '2026-10-20', kg: 66 });
       await t.logWeight({ date: TODAY, kg: 64 });
       const d = await t.dashboard('2026-10-21');
@@ -65,7 +64,7 @@ for (const [label, makeStore] of [
     });
 
     test('sample data gives back the true maintenance', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       await t.loadDemo(TODAY);
       const d = await t.dashboard(TODAY);
       assert.equal(d.adaptive.ready, true);
@@ -76,7 +75,7 @@ for (const [label, makeStore] of [
     });
 
     test('saved foods can be searched, logged by amount and deleted', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       const food = await t.addFood({ name: 'Marigold HL milk', per: 'serving', servingUnit: 'packet', servingGrams: 200, kcal: 94, protein: 6.8, carbs: 9.6, fat: 3.2 });
       const [hit] = await t.searchFoods('2 packets hl milk');
       assert.equal(hit.food.id, `my-${food.id}`);
@@ -88,7 +87,7 @@ for (const [label, makeStore] of [
     });
 
     test('meals keep their amount and grams', async () => {
-      const t = createTracker(makeStore());
+      const t = createTracker(await makeStore());
       const [rice] = await t.searchFoods('1 bowl white rice');
       const { food, qty, unit, ...entry } = rice;
       const saved = await t.addMeal({ date: TODAY, slot: 'lunch', name: food.name, ...entry });
@@ -99,11 +98,11 @@ for (const [label, makeStore] of [
     });
 
     test('export and import round-trip', async () => {
-      const a = createTracker(makeStore());
+      const a = createTracker(await makeStore());
       await a.loadDemo(TODAY);
       await a.addFood({ name: 'Protein bar', kcal: 380, protein: 33, carbs: 35, fat: 12, servingUnit: 'bar', servingGrams: 60 });
       const dump = await a.exportData();
-      const b = createTracker(makeStore());
+      const b = createTracker(await makeStore());
       const counts = await b.importData(dump);
       assert.equal(counts.weights, dump.weights.length);
       assert.equal(counts.foods, 1);
@@ -116,22 +115,12 @@ for (const [label, makeStore] of [
 
 describe('HTTP API', () => {
   let server;
-  let base;
+  let call;
   before(async () => {
-    server = createApp(createSqliteStore()).listen(0);
-    await new Promise((r) => server.once('listening', r));
-    base = `http://localhost:${server.address().port}/api`;
+    server = await startServer();
+    call = await server.client();
   });
   after(() => server.close());
-
-  const call = async (method, path, body) => {
-    const res = await fetch(base + path, {
-      method,
-      headers: body ? { 'content-type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return { status: res.status, body: res.status === 204 ? null : await res.json() };
-  };
 
   test('validation errors come back as 400 with every message', async () => {
     const res = await call('POST', '/meals', { date: '2026-13-01', slot: 'lunch' });
