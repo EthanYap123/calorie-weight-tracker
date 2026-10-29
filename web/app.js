@@ -153,6 +153,10 @@ function render() {
 
 // ---------- account (online version only) ----------
 
+// The login page is the first thing a visitor sees, so point them at the no-account demo.
+const DEMO_URL = 'https://ethanyap123.github.io/calorie-weight-tracker/?demo';
+const SOURCE_URL = 'https://github.com/EthanYap123/calorie-weight-tracker';
+
 function renderLogin(mode = state.authMode ?? 'login') {
   state.authMode = mode;
   state.data = null;
@@ -174,7 +178,12 @@ function renderLogin(mode = state.authMode ?? 'login') {
       <button class="btn primary">${signup ? 'Create account' : 'Log in'}</button>
     </form>
     ${signup ? '<p class="muted small">Already using Steady in the browser-only version? After signing up, go there, choose Settings, Export JSON, then use Import JSON here to bring everything across.</p>' : ''}
-  </section>`;
+  </section>
+  <aside class="login-more">
+    <a class="btn" href="${DEMO_URL}">Just looking? Try the demo (no account needed) →</a>
+    <p class="muted">Steady logs food by the gram and adjusts your calorie target to how your weight actually moves.</p>
+    <a class="muted small" href="${SOURCE_URL}">Source on GitHub</a>
+  </aside>`;
 }
 
 function accountCard() {
