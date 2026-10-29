@@ -225,6 +225,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 /* ---------- setup ---------- */
 
 .setup { max-width: 640px; margin: 12px auto 0; padding: 28px; gap: 14px; }
+.login-more { max-width: 640px; margin: 20px auto 0; display: grid; gap: 10px; justify-items: center; text-align: center; }
+.login-more .btn { color: var(--accent); }
+.login-more p { margin: 0; }
 /* Online version, logged out: nothing to navigate yet. */
 .signed-out .tabs, .signed-out .datenav { display: none; }
 

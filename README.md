@@ -9,7 +9,7 @@ Steady runs in two ways, from the same code:
 
 On a phone, use "Add to Home Screen" to install either one as an app. See [Deployment](#deployment).
 
-![Node.js](https://img.shields.io/badge/Node.js-22-2f7d5b) ![Express](https://img.shields.io/badge/Express-5-2f7d5b) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-2f7d5b) [![CI](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml)
+![Node.js](https://img.shields.io/badge/Node.js-22-2f7d5b) ![Express](https://img.shields.io/badge/Express-5-2f7d5b) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-2f7d5b) ![Vercel](https://img.shields.io/badge/Vercel-sin1-2f7d5b) [![CI](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml)
 
 ## Features
 
