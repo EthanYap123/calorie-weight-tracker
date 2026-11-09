@@ -220,10 +220,6 @@ npm test
 
 **Browser demo (GitHub Pages).** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request. It runs the tests on PGlite and on a Postgres service container, checks the schema setup can run twice, boots the real server and smoke-tests sign-up and the dashboard with `curl`, and builds both sites. On `main` it then deploys `_site` to GitHub Pages. `scripts/build-demo.js` copies `web/` and `core/` and switches `config.js` to local mode. That's the only difference from the server build.
 
-## What I'd improve next
-
-- TODO(Ethan): add two or three things you'd like Steady to do next. I left this blank because only you know which features you miss when you use it every day.
-
 ## What I learned
 
 - **Accuracy comes from grams, not names.** "A bowl of rice" means nothing until it has a weight, so every food stores values per 100 g with real portion sizes.
