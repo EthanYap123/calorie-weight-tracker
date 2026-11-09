@@ -7,9 +7,11 @@ Steady runs in two ways, from the same code:
 - **Online app with an account:** https://calorie-weight-tracker.vercel.app (Vercel + Neon Postgres). Log in on your phone and your laptop and see the same data on both.
 - **Browser demo, no account:** https://ethanyap123.github.io/calorie-weight-tracker/ runs the same tracker code in your browser and saves to `localStorage` on that device only. **Try it with sample data:** https://ethanyap123.github.io/calorie-weight-tracker/?demo
 
-On a phone, use "Add to Home Screen" to install either one as an app. See [Deployment](#deployment).
+On a phone, use "Add to Home Screen" to install either one as an app. See [CI and deployment](#ci-and-deployment).
 
 ![Node.js](https://img.shields.io/badge/Node.js-22-2f7d5b) ![Express](https://img.shields.io/badge/Express-5-2f7d5b) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-2f7d5b) ![Vercel](https://img.shields.io/badge/Vercel-sin1-2f7d5b) [![CI](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/EthanYap123/calorie-weight-tracker/actions/workflows/ci.yml)
+
+![Today view with a calorie ring showing 1,038 kcal left and breakfast entries logged by amount](docs/screenshot.jpg)
 
 ## Features
 
@@ -62,6 +64,17 @@ On a phone, use "Add to Home Screen" to install either one as an app. See [Deplo
 
 The sample data comes from a simulated person whose true maintenance is 2,500 kcal. They eat real dishes from the food list and their weight follows what they ate, plus water noise. A test checks that the adaptive estimate gets within 150 kcal of 2,500 when it reads that data back ([`core/seed.js`](core/seed.js)).
 
+## Tech stack
+
+| Layer | Tools |
+| --- | --- |
+| Server | Node.js 22, Express 5 |
+| Database | PostgreSQL (Neon in production), PGlite locally |
+| Auth | bcrypt, JSON Web Tokens, rate limits stored in Postgres |
+| Front end | Vanilla JavaScript, hand-drawn SVG charts, installable as a PWA |
+| Food data | 242 built-in foods, USDA FoodData Central, Open Food Facts |
+| Testing and CI | `node:test`, GitHub Actions, Vercel, GitHub Pages |
+
 ## Architecture
 
 ```mermaid
@@ -105,32 +118,6 @@ scripts/     build-demo.js (Pages and Vercel builds), setup-db.js (schema), seed
 tests/       node:test suites for the core, both stores, accounts and the HTTP API
 ```
 
-## Running locally
-
-Needs Node.js 22 or newer. You don't need to install Postgres: without `DATABASE_URL` the server runs [PGlite](https://pglite.dev) (real Postgres compiled to WebAssembly) and keeps its data in `data/pglite`.
-
-```bash
-npm install
-npm start         # http://localhost:3000, then create an account
-npm run seed -- you@example.com your-password   # optional: eight weeks of sample data in that account
-```
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `DATABASE_URL` | none | A `postgres://` URL. Leave it out to use PGlite |
-| `PGLITE_DIR` | `data/pglite` | Where PGlite keeps its data (`memory://` keeps nothing) |
-| `JWT_SECRET_KEY` | a fixed local-only value | Secret for signing login tokens. Required in production |
-| `PORT` | 3000 | Port |
-
-`npm run db:setup` creates or updates the tables in `DATABASE_URL`. Every statement is safe to repeat.
-
-To try the static demo build:
-
-```bash
-npm run build:demo
-npx serve _site   # or any static file server
-```
-
 ## API
 
 All routes except the first three need `Authorization: Bearer <token>` and return `401` without it.
@@ -168,7 +155,35 @@ All routes except the first three need `Authorization: Bearer <token>` and retur
 
 Invalid input returns `400` with every problem listed in `errors`, for example `{"error": "...", "errors": ["Weight must be between 30 and 300."]}`.
 
-## Tests
+## Getting started
+
+Needs Node.js 22 or newer. You don't need to install Postgres: without `DATABASE_URL` the server runs [PGlite](https://pglite.dev) (real Postgres compiled to WebAssembly) and keeps its data in `data/pglite`.
+
+```bash
+npm install
+npm start         # http://localhost:3000, then create an account
+npm run seed -- you@example.com your-password   # optional: eight weeks of sample data in that account
+```
+
+These are read from the environment. Set them in your shell, or copy [`.env.example`](.env.example) to `.env` and start with `node --env-file=.env server/index.js`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DATABASE_URL` | none | A `postgres://` URL. Leave it out to use PGlite |
+| `PGLITE_DIR` | `data/pglite` | Where PGlite keeps its data (`memory://` keeps nothing) |
+| `JWT_SECRET_KEY` | a fixed local-only value | Secret for signing login tokens. Required in production |
+| `PORT` | 3000 | Port |
+
+`npm run db:setup` creates or updates the tables in `DATABASE_URL`. Every statement is safe to repeat.
+
+To try the static demo build:
+
+```bash
+npm run build:demo
+npx serve _site   # or any static file server
+```
+
+## Testing
 
 ```bash
 npm test
@@ -192,7 +207,7 @@ npm test
 - HTTP API status codes and validation errors.
 - The parity test between the API and the browser store (dashboards, exports and food search).
 
-## Deployment
+## CI and deployment
 
 **Online app (Vercel + Neon).** [`vercel.json`](vercel.json) sets no framework, region `sin1` (Singapore) and rewrites `/api/*` to [`api/index.js`](api/index.js), which exports the Express app as one serverless function. The build command, `npm run build:vercel`, runs the idempotent schema setup against `DATABASE_URL`, then copies `web/` and `core/` into `public/`, which Vercel serves as static files. To set it up:
 
@@ -204,6 +219,15 @@ npm test
 **Moving data from the browser demo.** The two versions live on different sites, so the app can't read the demo's `localStorage` directly. In the demo, open Settings and Export JSON. In the online app, sign up, then use Import JSON (on the welcome screen or in Settings).
 
 **Browser demo (GitHub Pages).** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request. It runs the tests on PGlite and on a Postgres service container, checks the schema setup can run twice, boots the real server and smoke-tests sign-up and the dashboard with `curl`, and builds both sites. On `main` it then deploys `_site` to GitHub Pages. `scripts/build-demo.js` copies `web/` and `core/` and switches `config.js` to local mode. That's the only difference from the server build.
+
+## What I'd improve next
+
+- TODO(Ethan): add two or three things you'd like Steady to do next. I left this blank because only you know which features you miss when you use it every day.
+
+## What I learned
+
+- **Accuracy comes from grams, not names.** "A bowl of rice" means nothing until it has a weight, so every food stores values per 100 g with real portion sizes.
+- **Formulas are a starting point.** BMR formulas were 10–20% off for one person, so the app measures maintenance from my own logs instead.
 
 ## License
 
